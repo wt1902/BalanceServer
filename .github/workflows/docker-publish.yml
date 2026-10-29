@@ -1,0 +1,66 @@
+name: Docker publish
+
+# Builds the image and pushes it to a Gitea Container Registry.
+#
+# Configure the repository by adding these secrets / variables:
+#   Secrets:
+#     REGISTRY_TOKEN  - Gitea PAT with `write:package` (and `read:repository`) scope.
+#   Variables (Settings -> Actions):
+#     REGISTRY_HOST    - the Gitea registry host, e.g. gitea.com (default below)
+#     REGISTRY_OWNER   - owner/namespace of the repo, e.g. your-username or your-org
+#     REGISTRY_REPO    - repository name, e.g. balance-server
+#     REGISTRY_USER    - the username owning the token if it differs from REGISTRY_OWNER.
+#
+# NOTE: variable/secret names must NOT start with GITEA_ or GITHUB_.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+env:
+  REGISTRY_HOST: ${{ vars.REGISTRY_HOST || 'gitea.com' }}
+  REGISTRY_OWNER: ${{ vars.REGISTRY_OWNER }}
+  REGISTRY_REPO: ${{ vars.REGISTRY_REPO || github.event.repository.name }}
+  REGISTRY_USER: ${{ vars.REGISTRY_USER || vars.REGISTRY_OWNER }}
+
+jobs:
+  publish:
+    name: Build and push image
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute tags
+        id: meta
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          # Keep only semver body so "v1.2.3" -> "1.2.3".
+          tag="${VERSION#v}"
+          echo "version_tagname=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Gitea Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_HOST }}
+          username: ${{ env.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.REGISTRY_HOST }}/${{ env.REGISTRY_OWNER }}/${{ env.REGISTRY_REPO }}:${{ steps.meta.outputs.version_tagname }}
+            ${{ env.REGISTRY_HOST }}/${{ env.REGISTRY_OWNER }}/${{ env.REGISTRY_REPO }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
