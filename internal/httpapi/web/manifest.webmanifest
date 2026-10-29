@@ -1,0 +1,13 @@
+{
+  "name": "Balance — личные финансы",
+  "short_name": "Balance",
+  "description": "Self-hosted приложение для управления личными финансами",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f5f8",
+  "theme_color": "#5b5bd6",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

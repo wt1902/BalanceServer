@@ -1,0 +1,19 @@
+services:
+  balance-server:
+    build: .
+    restart: always
+    ports:
+      - "8123:8080"
+    environment:
+      BALANCE_ADDR: ":8080"
+      BALANCE_DB_PATH: "/data/balance.db"
+      BALANCE_JWT_SECRET: "${BALANCE_JWT_SECRET:?Set BALANCE_JWT_SECRET in .env}"
+      BALANCE_ALLOW_REGISTRATION: "${BALANCE_ALLOW_REGISTRATION:-true}"
+      BALANCE_ACCESS_TTL: "${BALANCE_ACCESS_TTL:-15m}"
+      BALANCE_REFRESH_TTL: "${BALANCE_REFRESH_TTL:-720h}"
+      BALANCE_CORS_ORIGINS: "${BALANCE_CORS_ORIGINS:-}"
+    volumes:
+      - balance-data:/data
+
+volumes:
+  balance-data:

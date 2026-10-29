@@ -1,0 +1,28 @@
+[package]
+name = "balance-server"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.90"
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value", "arbitrary_precision"] }
+argon2 = "0.5"
+base64 = "0.22"
+hmac = "0.12"
+sha2 = "0.10"
+rand = "0.8"
+httpdate = "1"
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio", "service"] }
+tower = { version = "0.5", features = ["util"] }
+http-body = "1"
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1

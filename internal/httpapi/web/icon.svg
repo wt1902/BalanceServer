@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Balance</title>
+  <defs>
+    <linearGradient id="bg" x1="70" y1="36" x2="446" y2="476" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7777ef"/>
+      <stop offset="1" stop-color="#4242b8"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="144" y1="122" x2="366" y2="386" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff"/>
+      <stop offset="1" stop-color="#dedfff"/>
+    </linearGradient>
+  </defs>
+  <rect x="28" y="28" width="456" height="456" rx="128" fill="url(#bg)"/>
+  <path d="M141 173c0-25 20-45 45-45h140c25 0 45 20 45 45v18H186c-25 0-45 20-45 45v-63Z" fill="#fff" opacity=".5"/>
+  <path d="M116 222c0-28 23-51 51-51h179c28 0 51 23 51 51v126c0 28-23 51-51 51H167c-28 0-51-23-51-51V222Z" fill="url(#shine)"/>
+  <path d="M302 258h95v86h-95c-24 0-43-19-43-43s19-43 43-43Z" fill="#5b5bd6"/>
+  <circle cx="306" cy="301" r="13" fill="#fff"/>
+  <path d="M184 250h44M184 289h44M184 328h44" stroke="#5b5bd6" stroke-width="18" stroke-linecap="round" opacity=".72"/>
+</svg>
