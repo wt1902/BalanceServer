@@ -4,7 +4,7 @@ dist/
 *.db
 *.db-shm
 *.db-wal
-balance-server
+/balance-server
 balance-server.exe
 target/
 __pycache__/
