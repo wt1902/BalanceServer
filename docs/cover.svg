@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <defs>
+    <radialGradient id="glow" cx="300" cy="320" r="460" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5b5bd6" stop-opacity=".42"/>
+      <stop offset=".55" stop-color="#5b5bd6" stop-opacity=".08"/>
+      <stop offset="1" stop-color="#5b5bd6" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="640" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#15151c"/>
+      <stop offset="1" stop-color="#0d0d12"/>
+    </linearGradient>
+    <linearGradient id="iconbg" x1="70" y1="36" x2="446" y2="476" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7777ef"/>
+      <stop offset="1" stop-color="#4242b8"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="144" y1="122" x2="366" y2="386" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff"/>
+      <stop offset="1" stop-color="#dedfff"/>
+    </linearGradient>
+    <pattern id="dots" width="28" height="28" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.4" fill="#ffffff" opacity=".06"/>
+    </pattern>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#000" flood-opacity=".55"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <rect width="1280" height="640" fill="url(#dots)"/>
+  <rect width="1280" height="640" fill="url(#glow)"/>
+
+  <!-- Sync orbits around the app icon, with client devices on them -->
+  <g fill="none" stroke="#8b8bff" stroke-linecap="round">
+    <circle cx="300" cy="320" r="215" stroke-opacity=".22" stroke-width="2" stroke-dasharray="2 12"/>
+    <circle cx="300" cy="320" r="268" stroke-opacity=".12" stroke-width="2"/>
+    <path d="M300 52a268 268 0 0 1 232 134" stroke-opacity=".7" stroke-width="3"/>
+    <path d="M300 588a268 268 0 0 1-232-134" stroke-opacity=".7" stroke-width="3"/>
+  </g>
+  <path d="M532 186l-2-20 18 9z" fill="#8b8bff" opacity=".8"/>
+  <path d="M68 454l2 20-18-9z" fill="#8b8bff" opacity=".8"/>
+  <g font-family="JetBrains Mono" font-size="15" font-weight="600" fill="#c9c9ff" text-anchor="middle">
+    <g transform="translate(300 105)"><rect x="-44" y="-17" width="88" height="34" rx="17" fill="#1f1f2b" stroke="#3b3b55"/><text y="5">iOS</text></g>
+    <g transform="translate(486 320)"><rect x="-50" y="-17" width="100" height="34" rx="17" fill="#1f1f2b" stroke="#3b3b55"/><text y="5">macOS</text></g>
+    <g transform="translate(300 535)"><rect x="-58" y="-17" width="116" height="34" rx="17" fill="#1f1f2b" stroke="#3b3b55"/><text y="5">Android</text></g>
+    <g transform="translate(114 320)"><rect x="-44" y="-17" width="88" height="34" rx="17" fill="#1f1f2b" stroke="#3b3b55"/><text y="5">Web</text></g>
+  </g>
+
+  <!-- App icon (internal/httpapi/web/icon.svg) -->
+  <g transform="translate(180 200) scale(.46875)" filter="url(#shadow)">
+    <rect x="28" y="28" width="456" height="456" rx="128" fill="url(#iconbg)"/>
+    <path d="M141 173c0-25 20-45 45-45h140c25 0 45 20 45 45v18H186c-25 0-45 20-45 45v-63Z" fill="#fff" opacity=".5"/>
+    <path d="M116 222c0-28 23-51 51-51h179c28 0 51 23 51 51v126c0 28-23 51-51 51H167c-28 0-51-23-51-51V222Z" fill="url(#shine)"/>
+    <path d="M302 258h95v86h-95c-24 0-43-19-43-43s19-43 43-43Z" fill="#5b5bd6"/>
+    <circle cx="306" cy="301" r="13" fill="#fff"/>
+    <path d="M184 250h44M184 289h44M184 328h44" stroke="#5b5bd6" stroke-width="18" stroke-linecap="round" opacity=".72"/>
+  </g>
+
+  <!-- Title block -->
+  <g font-family="Adwaita Sans" fill="#f5f5f7">
+    <text x="640" y="250" font-size="88" font-weight="800" letter-spacing="-2.5">Balance</text>
+    <text x="640" y="342" font-size="88" font-weight="800" letter-spacing="-2.5" fill="#9d9dff">Server</text>
+    <text x="642" y="398" font-size="27" font-weight="500" fill="#a4a5b2">Self-hosted sync &amp; accounts for Balance</text>
+  </g>
+
+  <g font-family="JetBrains Mono" font-size="17" font-weight="600">
+    <g transform="translate(642 446)">
+      <rect width="96" height="40" rx="10" fill="#2a1f1a" stroke="#5a3a28"/>
+      <text x="48" y="26" text-anchor="middle" fill="#f2a46b">Rust</text>
+    </g>
+    <g transform="translate(752 446)">
+      <rect width="112" height="40" rx="10" fill="#17222b" stroke="#28465a"/>
+      <text x="56" y="26" text-anchor="middle" fill="#78bde8">SQLite</text>
+    </g>
+    <g transform="translate(878 446)">
+      <rect width="112" height="40" rx="10" fill="#162329" stroke="#244b5a"/>
+      <text x="56" y="26" text-anchor="middle" fill="#6fd0e8">Docker</text>
+    </g>
+    <g transform="translate(1004 446)">
+      <rect width="88" height="40" rx="10" fill="#14251d" stroke="#235a40"/>
+      <text x="44" y="26" text-anchor="middle" fill="#5fd39b">PWA</text>
+    </g>
+  </g>
+
+  <text x="642" y="540" font-family="JetBrains Mono" font-size="18" fill="#6c6d7c">
+    <tspan fill="#9d9dff">POST</tspan> /v1/sync <tspan fill="#4a4b58">→</tspan> <tspan fill="#5fd39b">200 OK</tspan>
+  </text>
+</svg>

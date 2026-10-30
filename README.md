@@ -1,5 +1,7 @@
 # Balance Server
 
+![Balance Server — self-hosted sync and accounts for Balance](docs/cover.png)
+
 Self-hosted synchronization, account and web server for the Balance iOS, macOS, watchOS and Android applications. It is a single Rust process with a bundled SQLite engine and a complete browser client, and runs on Linux, Windows and macOS.
 
 ## Quick start with Docker
