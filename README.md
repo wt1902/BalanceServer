@@ -45,8 +45,7 @@ $env:BALANCE_DB_PATH = ".\data\balance.db"
 
 For another platform, build on that platform or install its Rust target and C toolchain
 for bundled SQLite. `cargo build --locked --release --target <target>` requires the
-matching linker and C compiler. The retained Go implementation is a compatibility
-reference and rollback option: `go build -o balance-server-go ./cmd/balance-server`.
+matching linker and C compiler.
 
 After starting the binary, open `http://localhost:8080` in a browser. The web assets are embedded into the executable, so there is no separate frontend build, Node.js process or static directory to deploy.
 
@@ -114,9 +113,10 @@ The sync endpoint accepts transactions, custom categories and monthly budgets. T
 
 ## Compatibility and migration
 
-The Rust server retains the HTTP/JSON API, embedded web client, environment
-variables, SQLite schema, Argon2id password hashes, JWT format, refresh sessions
-and sync cursor semantics of the Go implementation. Docker Compose still maps
+The Rust server replaced the original Go implementation and retains its HTTP/JSON
+API, embedded web client, environment variables, SQLite schema, Argon2id password
+hashes, JWT format, refresh sessions and sync cursor semantics. The Go sources were
+removed after v1.0.0; that tag still contains them for reference or rollback. Docker Compose still maps
 host port **8123** to container port **8080** and keeps `/data` in `balance-data`.
 Direct binary execution defaults to port 8080.
 
@@ -126,8 +126,7 @@ against the same `BALANCE_DB_PATH`; do not run both writers simultaneously.
 Existing accounts, access/refresh tokens and saved device cursors remain usable.
 See [deployment and rollback](docs/DEPLOYMENT.md) for the full procedure.
 
-Verify the implementations locally with Go 1.27.3 (the version CI uses for the
-differential check), Rust and Python 3:
+Verify the server locally with Rust and Python 3:
 
 ```sh
 cargo test --locked
@@ -135,12 +134,11 @@ cargo fmt --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo build --locked
 python3 tools/compatibility.py
-go test ./...
-go vet ./...
-go build ./...
 ```
 
-The Python standard-library suite builds the Go reference, starts both binaries
-on temporary loopback ports and databases, compares API responses and assets,
-and tests SQLite takeover and rollback in both directions. To use release or
-prebuilt executables, pass `--rust-binary PATH` and optionally `--go-binary PATH`.
+The Python standard-library suite starts the server on temporary loopback ports
+and databases, compares its API responses and assets with the responses recorded
+from the original Go server (`tools/compatibility_expected.txt`), and checks that
+SQLite data survives restarts. To test a release or prebuilt executable, pass
+`--binary PATH`. After an intentional API change, review the difference and
+re-record the reference with `--update`.

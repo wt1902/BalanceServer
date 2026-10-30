@@ -3,9 +3,9 @@
 ## Runtime and configuration
 
 The production executable is the Rust server, built with `cargo build --locked
---release`. SQLite is bundled into the executable. The Go implementation remains
-in `cmd/balance-server` and `internal/` as a compatibility reference and rollback
-option; build it with `go build -o balance-server-go ./cmd/balance-server`.
+--release`. SQLite is bundled into the executable. The original Go implementation
+was removed after v1.0.0; the `v1.0.0` tag still contains its sources for the
+migration and rollback below (`go build -o balance-server-go ./cmd/balance-server`).
 
 The Dockerfile uses a Rust 1.90 Debian Bookworm builder and a Debian Bookworm slim
 runtime, running as the unprivileged `balance` user. The image embeds the existing
@@ -65,8 +65,9 @@ required. Do not start both implementations against the same database at once.
 Stop Rust first. Start the retained Go executable/image with the same current
 database directory and secret. Rust-written accounts, password hashes, refresh
 sessions, records, tombstones and cursors remain readable by Go. Check health,
-login, refresh and sync again. The compatibility suite exercises both directions,
-including a second takeover back to the original implementation.
+login, refresh and sync again. Before the Go sources were removed, the
+compatibility suite verified takeover and rollback in both directions; Rust still
+writes the same schema (`tests/fixtures/go_schema_v1.sql`).
 
 For database corruption or an unrelated failed migration, stop all writers before
 restoring the complete backup directory. Restoring an older backup discards
@@ -77,12 +78,11 @@ an active database or delete a Compose volume as part of an upgrade.
 ## Validation and operations
 
 Before release run `cargo test --locked`, `cargo build --locked --release`,
-`python3 tools/compatibility.py --rust-binary target/release/balance-server`, and
-the retained reference checks `go test ./...`, `go vet ./...`, `go build ./...`.
-The differential suite uses temporary databases and loopback listeners, compares
-API/errors/security headers/assets, tests browser cookies, pagination, LWW,
-tombstones, concurrent pushes, token expiration, refresh rotation, rate limiting,
-and shared-database takeover/rollback in both directions.
+and `python3 tools/compatibility.py --binary target/release/balance-server`.
+The suite uses temporary databases and loopback listeners, compares
+API/errors/security headers/assets with the recorded Go reference, tests browser
+cookies, pagination, LWW, tombstones, concurrent pushes, token expiration, refresh
+rotation, rate limiting, and SQLite persistence across restarts.
 
 Keep regular encrypted backups with retention and restore drills. Monitor HTTP
 5xx, sync errors, authentication failures, latency, database/change-log growth

@@ -23,7 +23,7 @@ RUN set -eu; \
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
-COPY internal/httpapi/web ./internal/httpapi/web
+COPY web ./web
 RUN . /cross.env \
     && cargo build --locked --release --target "$RUST_TARGET" \
     && cp "target/$RUST_TARGET/release/balance-server" /balance-server

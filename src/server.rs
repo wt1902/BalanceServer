@@ -687,27 +687,24 @@ fn web(path: &str, headers: &HeaderMap) -> Response {
     }
     let (bytes, mime): (&'static [u8], &'static str) = match cleaned.as_str() {
         "/" => (
-            include_bytes!("../internal/httpapi/web/index.html"),
+            include_bytes!("../web/index.html"),
             "text/html; charset=utf-8",
         ),
         "/app.js" => (
-            include_bytes!("../internal/httpapi/web/app.js"),
+            include_bytes!("../web/app.js"),
             "text/javascript; charset=utf-8",
         ),
         "/service-worker.js" => (
-            include_bytes!("../internal/httpapi/web/service-worker.js"),
+            include_bytes!("../web/service-worker.js"),
             "text/javascript; charset=utf-8",
         ),
         "/styles.css" => (
-            include_bytes!("../internal/httpapi/web/styles.css"),
+            include_bytes!("../web/styles.css"),
             "text/css; charset=utf-8",
         ),
-        "/icon.svg" => (
-            include_bytes!("../internal/httpapi/web/icon.svg"),
-            "image/svg+xml",
-        ),
+        "/icon.svg" => (include_bytes!("../web/icon.svg"), "image/svg+xml"),
         "/manifest.webmanifest" => (
-            include_bytes!("../internal/httpapi/web/manifest.webmanifest"),
+            include_bytes!("../web/manifest.webmanifest"),
             "text/plain; charset=utf-8",
         ),
         _ => return plain(404, "404 page not found\n"),

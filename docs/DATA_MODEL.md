@@ -2,27 +2,12 @@
 
 Ниже описана серверная модель на основании исходного кода проекта. При изменении schema обновляйте этот документ.
 
-## Найденные определения моделей/schema
+## Где определена schema
 
-- internal/database/database.go
-- internal/database/database.go
-- internal/database/database.go
-- internal/config/config.go
-- internal/auth/tokens.go
-- internal/auth/tokens.go
-- internal/httpapi/auth_handlers.go
-- internal/httpapi/auth_handlers.go
-- internal/httpapi/auth_handlers.go
-- internal/httpapi/server.go
-- internal/httpapi/server.go
-- internal/httpapi/server.go
-- internal/httpapi/sync_handler.go
-- internal/httpapi/sync_handler.go
-- internal/httpapi/sync_handler.go
-- internal/httpapi/web.go
-- internal/httpapi/server_test.go
-- internal/httpapi/server_test.go
-- internal/httpapi/server_test.go
+- `src/database.rs` — создание и открытие схемы SQLite;
+- `tests/fixtures/go_schema_v1.sql` — исходная схема Go-сервера v1.0.0; Rust обязан открывать такие базы без изменений;
+- `src/sync.rs` — валидация и сериализация синхронизируемых записей;
+- `src/auth.rs` — пользователи, пароли и refresh-сессии.
 
 ## Общие сущности
 

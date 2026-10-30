@@ -45,7 +45,7 @@
     <g transform="translate(114 320)"><rect x="-44" y="-17" width="88" height="34" rx="17" fill="#1f1f2b" stroke="#3b3b55"/><text y="5">Web</text></g>
   </g>
 
-  <!-- App icon (internal/httpapi/web/icon.svg) -->
+  <!-- App icon (web/icon.svg) -->
   <g transform="translate(180 200) scale(.46875)" filter="url(#shadow)">
     <rect x="28" y="28" width="456" height="456" rx="128" fill="url(#iconbg)"/>
     <path d="M141 173c0-25 20-45 45-45h140c25 0 45 20 45 45v18H186c-25 0-45 20-45 45v-63Z" fill="#fff" opacity=".5"/>

@@ -2,28 +2,26 @@
 
 ## Требования
 
-Production-сервер использует Rust 1.90+ и bundled SQLite. Go 1.25+ нужен для сохранённой эталонной реализации; differential-проверки (`tools/compatibility.py`) требуют Go 1.27.3, как в CI: поведение `net/http` (например, код редиректа ServeMux 301/307) зависит от версии Go. Python 3 используется без сторонних пакетов.
+Сервер использует Rust 1.90+ и bundled SQLite. Python 3 нужен для `tools/compatibility.py` и используется без сторонних пакетов. Go больше не нужен.
 
 Проверить локальную версию:
 
 ```bash
 rustc --version
 cargo --version
-go version
+python3 --version
 ```
 
 ## Установка зависимостей
 
 ```bash
 cargo fetch --locked
-go mod download
 ```
 
 ## Сборка
 
 ```bash
 cargo build --locked
-go build ./...
 ```
 
 ## Тесты
@@ -32,13 +30,15 @@ go build ./...
 cargo test --locked
 cargo build --locked
 python3 tools/compatibility.py
-go test ./...
 ```
 
-С race detector:
+`tools/compatibility.py` запускает сервер на временных портах и базах и сравнивает
+ответы API и статику с ответами исходного Go-сервера, записанными в
+`tools/compatibility_expected.txt`. Расхождение означает изменение, видимое
+клиентам. Если изменение намеренное, проверьте diff и перезапишите эталон:
 
 ```bash
-go test -race ./...
+python3 tools/compatibility.py --update
 ```
 
 ## Static checks
@@ -46,7 +46,6 @@ go test -race ./...
 ```bash
 cargo fmt --check
 cargo clippy --locked --all-targets -- -D warnings
-go vet ./...
 ```
 
 Если в проекте есть Makefile/CI, его команды имеют приоритет как canonical build pipeline.
@@ -89,7 +88,7 @@ cargo clippy --locked --all-targets -- -D warnings
   ↓
 cargo build --locked --release
   ↓
-python3 tools/compatibility.py --rust-binary target/release/balance-server
+python3 tools/compatibility.py --binary target/release/balance-server
   ↓
 container/package
   ↓
