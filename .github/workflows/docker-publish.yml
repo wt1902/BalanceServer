@@ -17,6 +17,7 @@ on:
   push:
     tags:
       - "v*.*.*"
+      - "v*"
 
 env:
   REGISTRY_HOST: ${{ vars.REGISTRY_HOST || 'gitea.com' }}
