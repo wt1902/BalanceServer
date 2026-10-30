@@ -14,6 +14,13 @@ are compiled at image build time.
 The numeric identity remains UID 100 / GID 101, matching the original Alpine Go
 image, so existing volume permissions are preserved across the switch.
 
+The image is multi-platform: `linux/amd64`, `linux/arm64` and `linux/arm/v7`
+(armhf) are published under the same tag, and `docker pull` selects the matching
+one. The builder stage runs on the build machine's platform and cross-compiles
+Rust (with GCC cross compilers for bundled SQLite), so only the runtime stage
+needs QEMU. Build all platforms locally with a `docker-container` buildx builder:
+`docker buildx build --platform linux/amd64,linux/arm64,linux/arm/v7 .`
+
 `docker compose up -d --build` publishes **http://localhost:8123** (host 8123,
 container 8080). `GET /health` is the liveness endpoint. Direct binary execution
 uses `:8080` by default. Place a TLS reverse proxy in front of the published port

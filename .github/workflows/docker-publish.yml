@@ -55,6 +55,13 @@ jobs:
           echo "image=$image" >> "$GITHUB_OUTPUT"
           echo "Publishing $image:$tag as $REGISTRY_USER"
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          # Only the runtime stage runs emulated; Rust is cross-compiled natively.
+          image: ${{ vars.DOCKERHUB_MIRROR || 'mirror.gcr.io' }}/tonistiigi/binfmt:latest
+          platforms: arm64,arm
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
@@ -75,6 +82,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
           tags: |
             ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version_tagname }}
