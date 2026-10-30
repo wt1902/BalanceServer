@@ -124,7 +124,8 @@ against the same `BALANCE_DB_PATH`; do not run both writers simultaneously.
 Existing accounts, access/refresh tokens and saved device cursors remain usable.
 See [deployment and rollback](docs/DEPLOYMENT.md) for the full procedure.
 
-Verify the implementations locally with Go 1.25+, Rust and Python 3:
+Verify the implementations locally with Go 1.27.3 (the version CI uses for the
+differential check), Rust and Python 3:
 
 ```sh
 cargo test --locked

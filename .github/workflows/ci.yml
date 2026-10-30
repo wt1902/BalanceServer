@@ -9,7 +9,10 @@ env:
   CARGO_TERM_COLOR: always
   # Pin the toolchain to the declared MSRV so CI matches production.
   RUST_TOOLCHAIN: 1.90.0
-  GO_VERSION: "1.25.0"
+  # The differential check compares Rust against net/http behaviour, which
+  # changes between Go releases (e.g. ServeMux redirects 301 -> 307), so the
+  # reference must be built with the same Go the Rust port mirrors.
+  GO_VERSION: "1.27.3"
 
 jobs:
   rust:
