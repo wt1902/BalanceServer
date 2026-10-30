@@ -10,6 +10,7 @@ name: Docker publish
 #     REGISTRY_OWNER   - owner/namespace of the image (default: repository owner)
 #     REGISTRY_REPO    - image name (default: repository name)
 #     REGISTRY_USER    - the username owning the token (default: user who pushed the tag)
+#     DOCKERHUB_MIRROR - Docker Hub mirror for base images (default: mirror.gcr.io)
 #
 # NOTE: variable/secret names must NOT start with GITEA_ or GITHUB_.
 
@@ -56,6 +57,12 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          # BuildKit runs in its own container and ignores the host daemon's
+          # registry-mirrors, so Docker Hub base images go through a mirror here.
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["${{ vars.DOCKERHUB_MIRROR || 'mirror.gcr.io' }}"]
 
       - name: Log in to Gitea Container Registry
         uses: docker/login-action@v3
