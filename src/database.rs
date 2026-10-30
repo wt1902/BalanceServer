@@ -114,17 +114,10 @@ mod tests {
         let path = directory.join("existing.sqlite");
         {
             let db = Connection::open(&path).unwrap();
-            // Use the original schema, so a divergence between implementations
-            // is caught even when Rust's migration is internally consistent.
-            let go_source = include_str!("../internal/database/database.go");
-            let schema = go_source
-                .split("const schema = `")
-                .nth(1)
-                .unwrap()
-                .split('`')
-                .next()
+            // Use the original Go schema, so a divergence is caught even when
+            // Rust's migration is internally consistent.
+            db.execute_batch(include_str!("../tests/fixtures/go_schema_v1.sql"))
                 .unwrap();
-            db.execute_batch(schema).unwrap();
             db.execute_batch(
                 "INSERT INTO users VALUES ('go-user','go@example.com','existing hash','2026-01-01T00:00:00.123456789Z');
                  INSERT INTO refresh_tokens(id,token_hash,user_id,expires_at,created_at) VALUES (7,'existing-token-hash','go-user','2099-01-01T00:00:00Z','2026-01-01T00:00:00Z');

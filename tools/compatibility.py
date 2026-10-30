@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
-"""Black-box Go/Rust compatibility and bilateral SQLite takeover checks (stdlib only)."""
+"""Black-box HTTP/JSON regression checks against the recorded Go reference (stdlib only).
+
+compatibility_expected.txt holds the observable responses of the original Go
+server (v1.0.0), which the Apple and Android clients were built against. Any
+difference is a client-visible API change. After an intentional change, review
+the diff and re-record with --update.
+"""
 import argparse
+import ast
 import base64
 import concurrent.futures
 import contextlib
@@ -9,6 +16,7 @@ import hashlib
 import hmac
 import json
 import os
+import pprint
 from pathlib import Path
 import socket
 import sqlite3
@@ -17,6 +25,7 @@ import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
+EXPECTED = Path(__file__).with_name('compatibility_expected.txt')
 SECRET = 'compatibility-test-secret-not-for-deployment-0123456789'
 PASSWORD = 'compatibility password'
 
@@ -370,38 +379,52 @@ def raw_json_scenarios(binary, database):
     return observed
 
 
+def web_assets(value):
+    """Stand in for embedded web files, so the reference survives web client edits."""
+    if isinstance(value, bytes):
+        for asset in sorted((ROOT / 'web').iterdir()):
+            if value == asset.read_bytes():
+                return ('web asset', asset.name)
+        return value
+    if isinstance(value, dict):
+        return {k: web_assets(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return type(value)(web_assets(v) for v in value)
+    return value
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--go-binary', type=Path)
-    parser.add_argument('--rust-binary', type=Path, default=ROOT / 'target/debug/balance-server')
+    parser.add_argument('--binary', type=Path, default=ROOT / 'target/debug/balance-server')
+    parser.add_argument('--update', action='store_true',
+                        help=f'record the responses as the new reference in {EXPECTED.name}')
     args = parser.parse_args()
+    binary = args.binary.resolve()
+    assert binary.is_file(), f'Build first: cargo build --locked (missing {binary})'
     with tempfile.TemporaryDirectory(prefix='balance-compatibility-') as directory:
         directory = Path(directory)
-        go = args.go_binary.resolve() if args.go_binary else directory / 'go-server'
-        if args.go_binary is None:
-            subprocess.run(['go','build','-o',str(go),'./cmd/balance-server'], cwd=ROOT, check=True)
-        rust = args.rust_binary.resolve()
-        assert rust.is_file(), f'Build Rust first: cargo build --locked (missing {rust})'
-        print('Running Go reference scenarios...', flush=True)
-        expected = scenario(go, directory / 'go.db')
-        print('Running Rust scenarios...', flush=True)
-        actual = scenario(rust, directory / 'rust.db')
-        for key in expected:
-            assert actual[key] == expected[key], f'Differential mismatch: {key}\nGo: {expected[key]!r}\nRust: {actual[key]!r}'
-        print('Comparing HTTP/JSON edge cases...', flush=True)
-        expected = edge_scenarios(go, directory / 'go-edge.db')
-        actual = edge_scenarios(rust, directory / 'rust-edge.db')
-        for key in expected:
-            assert actual[key] == expected[key], f'Differential mismatch: {key}\nGo: {expected[key]!r}\nRust: {actual[key]!r}'
-        print('Comparing raw JSON payload and Unicode preservation...', flush=True)
-        expected = raw_json_scenarios(go, directory / 'go-raw.db')
-        actual = raw_json_scenarios(rust, directory / 'rust-raw.db')
-        for key in expected:
-            assert actual[key] == expected[key], f'Differential mismatch: {key}\nGo: {expected[key]!r}\nRust: {actual[key]!r}'
-        for first, second, name in [(go,rust,'go-rust'),(rust,go,'rust-go')]:
-            print(f'Checking {name} SQLite takeover and rollback...', flush=True)
-            takeover(first, second, directory / f'{name}.db')
-    print('PASS: HTTP differential scenarios and bilateral SQLite takeover/rollback')
+        actual = {}
+        print('Running HTTP/JSON scenarios...', flush=True)
+        actual['scenario'] = scenario(binary, directory / 'scenario.db')
+        print('Running HTTP/JSON edge cases...', flush=True)
+        actual['edge'] = edge_scenarios(binary, directory / 'edge.db')
+        print('Running raw JSON payload and Unicode preservation...', flush=True)
+        actual['raw'] = raw_json_scenarios(binary, directory / 'raw.db')
+        actual = web_assets(actual)
+        if args.update:
+            EXPECTED.write_text(pprint.pformat(actual, width=100) + '\n')
+            print(f'Recorded {EXPECTED.relative_to(ROOT)}')
+        else:
+            expected = ast.literal_eval(EXPECTED.read_text())
+            for group in expected:
+                for key in expected[group]:
+                    assert actual[group].get(key) == expected[group][key], (
+                        f'Reference mismatch: {group} {key}\n'
+                        f'Expected: {expected[group][key]!r}\nActual: {actual[group].get(key)!r}')
+                assert actual[group].keys() == expected[group].keys(), f'Scenario set changed in {group}; re-record with --update'
+        print('Checking SQLite persistence across restarts...', flush=True)
+        takeover(binary, binary, directory / 'restart.db')
+    print('PASS: HTTP/JSON reference scenarios and SQLite persistence')
 
 
 if __name__ == '__main__':

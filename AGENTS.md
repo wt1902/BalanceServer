@@ -8,28 +8,14 @@
 
 ## Быстрая карта проекта
 
-Production-сервер написан на Rust 1.90+. Go 1.25.0+ сохранён как
-эталон совместимости API/SQLite и вариант отката.
+Сервер написан на Rust 1.90+. Исходная Go-реализация удалена после v1.0.0
+(её исходники остались в теге `v1.0.0`), но её поведение остаётся эталоном API:
+ответы Go записаны в `tools/compatibility_expected.txt`, а исходная SQLite-схема
+Go — в `tests/fixtures/go_schema_v1.sql`. Оба файла не правь вручную.
 
 Основные Rust-модули: `src/main.rs`, `runtime.rs`, `config.rs`,
 `database.rs`, `auth.rs`, `server.rs`, `sync.rs`, `go_json.rs`.
-Веб-клиент из `internal/httpapi/web` встроен в Rust executable.
-
-Основные Go-файлы:
-
-```text
-- internal/database/database.go
-- internal/config/config.go
-- internal/auth/tokens.go
-- internal/auth/password.go
-- internal/httpapi/auth_handlers.go
-- internal/httpapi/server.go
-- internal/httpapi/sync_handler.go
-- internal/httpapi/web.go
-- internal/httpapi/server_test.go
-```
-
-Количество Go-файлов: **9**.
+Веб-клиент из `web/` встроен в Rust executable.
 
 Обнаруженные технологии/интеграции: SQLite, Docker.
 
@@ -106,11 +92,12 @@ cargo fmt --check
 cargo test --locked
 cargo clippy --locked --all-targets -- -D warnings
 cargo build --locked --release
-python3 tools/compatibility.py --rust-binary target/release/balance-server
-go test ./...
-go vet ./...
-go build ./...
+python3 tools/compatibility.py --binary target/release/balance-server
 ```
+
+Если `tools/compatibility.py` нашёл расхождение, это изменение видно клиентам.
+Перезаписывай эталон (`--update`) только для намеренного изменения API и
+после обновления документации.
 
 Если проект использует дополнительные проверки/линтеры, запускай их по Makefile/CI.
 
@@ -130,8 +117,6 @@ go build ./...
 - [ ] Sync остаётся идемпотентным.
 - [ ] DB migration учтена.
 - [ ] Concurrent requests безопасны.
-- [ ] `go test ./...` проходит.
 - [ ] Rust tests, fmt, clippy и release build проходят.
-- [ ] Differential HTTP/JSON и Go ↔ Rust SQLite takeover проходят.
-- [ ] `go vet ./...` проходит.
+- [ ] `tools/compatibility.py` совпадает с записанным эталоном Go.
 - [ ] Документация обновлена.

@@ -23,16 +23,9 @@ Android ───────────┘
 
 ## Исходный код
 
-Production runtime — один Rust-процесс: `src/main.rs`, `runtime.rs`, `config.rs`, `database.rs`, `auth.rs`, `sync.rs`, `server.rs`, `go_json.rs`. SQLite bundled через rusqlite; HTTP обслуживается axum/hyper. `runtime.rs` сохраняет socket deadlines Go (header 5s, read 15s, write 30s, idle 60s) и ограничивает graceful shutdown десятью секундами. `go_json.rs` сохраняет особенности encoding/json и исходные payload bytes. Статические файлы из `internal/httpapi/web` встроены при компиляции. Go-код сохранён как эталон совместимости и вариант rollback.
+Production runtime — один Rust-процесс: `src/main.rs`, `runtime.rs`, `config.rs`, `database.rs`, `auth.rs`, `sync.rs`, `server.rs`, `go_json.rs`. SQLite bundled через rusqlite; HTTP обслуживается axum/hyper. `runtime.rs` сохраняет socket deadlines Go (header 5s, read 15s, write 30s, idle 60s) и ограничивает graceful shutdown десятью секундами. `go_json.rs` сохраняет особенности encoding/json и исходные payload bytes. Статические файлы из `web/` встроены при компиляции.
 
-Пути сохранённой Go-реализации:
-
-```text
-- internal/auth
-- internal/config
-- internal/database
-- internal/httpapi
-```
+Исходная Go-реализация удалена после v1.0.0 (исходники остались в теге `v1.0.0`). Её наблюдаемое поведение зафиксировано в `tools/compatibility_expected.txt`, а SQLite-схема — в `tests/fixtures/go_schema_v1.sql`; Rust сверяется с обоими в CI.
 
 Конкретные границы package/handler/service/repository нужно сохранять при рефакторинге: перенос кода между слоями не должен менять внешний API.
 

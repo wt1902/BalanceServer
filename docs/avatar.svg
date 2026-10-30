@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Repository avatar: the app's wallet icon, full-bleed, with a sync badge
+       marking it as the server. No text or thin lines, so it survives 24-40 px. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7777ef"/>
+      <stop offset="1" stop-color="#4242b8"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="80" y1="140" x2="380" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff"/>
+      <stop offset="1" stop-color="#dedfff"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#bg)"/>
+
+  <!-- Wallet, scaled up from web/icon.svg -->
+  <g transform="translate(-34 -46) scale(1.12)">
+    <path d="M141 173c0-25 20-45 45-45h140c25 0 45 20 45 45v18H186c-25 0-45 20-45 45v-63Z" fill="#fff" opacity=".5"/>
+    <path d="M116 222c0-28 23-51 51-51h179c28 0 51 23 51 51v126c0 28-23 51-51 51H167c-28 0-51-23-51-51V222Z" fill="url(#shine)"/>
+    <path d="M302 258h95v86h-95c-24 0-43-19-43-43s19-43 43-43Z" fill="#5b5bd6"/>
+    <circle cx="306" cy="301" r="14" fill="#fff"/>
+    <path d="M184 250h44M184 289h44M184 328h44" stroke="#5b5bd6" stroke-width="20" stroke-linecap="round" opacity=".72"/>
+  </g>
+
+  <!-- Sync badge -->
+  <circle cx="392" cy="392" r="92" fill="#16a36a" stroke="#4a4ac4" stroke-width="16"/>
+  <g fill="none" stroke="#fff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M346 380a48 48 0 0 1 82-26"/>
+    <path d="M438 404a48 48 0 0 1-82 26"/>
+  </g>
+  <path d="M440 324v42h-42z" fill="#fff" stroke="#fff" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M344 460v-42h42z" fill="#fff" stroke="#fff" stroke-width="6" stroke-linejoin="round"/>
+</svg>

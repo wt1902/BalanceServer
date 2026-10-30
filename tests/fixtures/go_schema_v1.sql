@@ -1,43 +1,5 @@
-package database
-
-import (
-	"context"
-	"database/sql"
-	"fmt"
-	"os"
-	"path/filepath"
-	"time"
-
-	_ "modernc.org/sqlite"
-)
-
-func Open(path string) (*sql.DB, error) {
-	directory := filepath.Dir(path)
-	if directory != "." {
-		if err := os.MkdirAll(directory, 0o750); err != nil {
-			return nil, fmt.Errorf("create database directory: %w", err)
-		}
-	}
-	db, err := sql.Open("sqlite", path+"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
-	if err != nil {
-		return nil, err
-	}
-	db.SetMaxOpenConns(1)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := db.PingContext(ctx); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
-	if err := migrate(ctx, db); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
-	return db, nil
-}
-
-func migrate(ctx context.Context, db *sql.DB) error {
-	const schema = `
+-- SQLite schema created by the original Go server (v1.0.0, internal/database/database.go).
+-- Rust must keep opening databases with exactly this schema; do not edit.
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -74,7 +36,3 @@ CREATE TABLE IF NOT EXISTS changes (
   version INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS changes_user_sequence_idx ON changes(user_id, sequence);
-`
-	_, err := db.ExecContext(ctx, schema)
-	return err
-}

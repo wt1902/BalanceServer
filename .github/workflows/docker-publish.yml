@@ -5,11 +5,12 @@ name: Docker publish
 # Configure the repository by adding these secrets / variables:
 #   Secrets:
 #     REGISTRY_TOKEN  - Gitea PAT with `write:package` (and `read:repository`) scope.
-#   Variables (Settings -> Actions):
-#     REGISTRY_HOST    - the Gitea registry host, e.g. gitea.com (default below)
-#     REGISTRY_OWNER   - owner/namespace of the repo, e.g. your-username or your-org
-#     REGISTRY_REPO    - repository name, e.g. balance-server
-#     REGISTRY_USER    - the username owning the token if it differs from REGISTRY_OWNER.
+#   Optional variables (Settings -> Actions); defaults come from the repository:
+#     REGISTRY_HOST    - the Gitea registry host (default: host of this Gitea instance)
+#     REGISTRY_OWNER   - owner/namespace of the image (default: repository owner)
+#     REGISTRY_REPO    - image name (default: repository name)
+#     REGISTRY_USER    - the username owning the token (default: user who pushed the tag)
+#     DOCKERHUB_MIRROR - Docker Hub mirror for base images (default: mirror.gcr.io)
 #
 # NOTE: variable/secret names must NOT start with GITEA_ or GITHUB_.
 
@@ -20,10 +21,10 @@ on:
       - "v*"
 
 env:
-  REGISTRY_HOST: ${{ vars.REGISTRY_HOST || 'gitea.com' }}
-  REGISTRY_OWNER: ${{ vars.REGISTRY_OWNER }}
+  REGISTRY_HOST: ${{ vars.REGISTRY_HOST }}
+  REGISTRY_OWNER: ${{ vars.REGISTRY_OWNER || github.repository_owner }}
   REGISTRY_REPO: ${{ vars.REGISTRY_REPO || github.event.repository.name }}
-  REGISTRY_USER: ${{ vars.REGISTRY_USER || vars.REGISTRY_OWNER }}
+  REGISTRY_USER: ${{ vars.REGISTRY_USER || github.actor }}
 
 jobs:
   publish:
@@ -40,18 +41,40 @@ jobs:
         id: meta
         env:
           VERSION: ${{ github.ref_name }}
+          SERVER_URL: ${{ github.server_url }}
         run: |
           # Keep only semver body so "v1.2.3" -> "1.2.3".
           tag="${VERSION#v}"
           echo "version_tagname=$tag" >> "$GITHUB_OUTPUT"
+          # The Gitea registry lives on the same host as the instance itself.
+          host="${REGISTRY_HOST:-${SERVER_URL#*://}}"
+          host="${host%%/*}"
+          echo "host=$host" >> "$GITHUB_OUTPUT"
+          # Image references must be lowercase ("BalanceServer" -> "balanceserver").
+          image="$host/${REGISTRY_OWNER,,}/${REGISTRY_REPO,,}"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "Publishing $image:$tag as $REGISTRY_USER"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          # Only the runtime stage runs emulated; Rust is cross-compiled natively.
+          image: ${{ vars.DOCKERHUB_MIRROR || 'mirror.gcr.io' }}/tonistiigi/binfmt:latest
+          platforms: arm64,arm
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          # BuildKit runs in its own container and ignores the host daemon's
+          # registry-mirrors, so Docker Hub base images go through a mirror here.
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["${{ vars.DOCKERHUB_MIRROR || 'mirror.gcr.io' }}"]
 
       - name: Log in to Gitea Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY_HOST }}
+          registry: ${{ steps.meta.outputs.host }}
           username: ${{ env.REGISTRY_USER }}
           password: ${{ secrets.REGISTRY_TOKEN }}
 
@@ -59,9 +82,10 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
           tags: |
-            ${{ env.REGISTRY_HOST }}/${{ env.REGISTRY_OWNER }}/${{ env.REGISTRY_REPO }}:${{ steps.meta.outputs.version_tagname }}
-            ${{ env.REGISTRY_HOST }}/${{ env.REGISTRY_OWNER }}/${{ env.REGISTRY_REPO }}:latest
+            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version_tagname }}
+            ${{ steps.meta.outputs.image }}:latest
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=max,ignore-error=true
