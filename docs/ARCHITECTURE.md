@@ -23,7 +23,7 @@ Android ───────────┘
 
 ## Исходный код
 
-Production runtime — один Rust-процесс: `src/main.rs`, `runtime.rs`, `config.rs`, `database.rs`, `auth.rs`, `sync.rs`, `server.rs`, `go_json.rs`. SQLite bundled через rusqlite; HTTP обслуживается axum/hyper. `runtime.rs` сохраняет socket deadlines Go (header 5s, read 15s, write 30s, idle 60s) и ограничивает graceful shutdown десятью секундами. `go_json.rs` сохраняет особенности encoding/json и исходные payload bytes. Статические файлы из `web/` встроены при компиляции.
+Production runtime — один Rust-процесс: `src/main.rs`, `runtime.rs`, `config.rs`, `database.rs`, `auth.rs`, `sync.rs`, `server.rs`, `go_json.rs`, `ledgers.rs` (общие пространства контракта v2), `attachments.rs` (файлы вложений на диске и их сборка мусора). SQLite bundled через rusqlite; HTTP обслуживается axum/hyper. `runtime.rs` сохраняет socket deadlines Go (header 5s, read 15s, write 30s, idle 60s) и ограничивает graceful shutdown десятью секундами. `go_json.rs` сохраняет особенности encoding/json и исходные payload bytes. Статические файлы из `web/` встроены при компиляции. Маршруты контракта v2 (`/v1/capabilities`, `/v1/ledgers*`, `/v1/attachments/*`) разбираются в `server.rs` до маршрутов v1, которые сохраняют поведение эталона Go.
 
 Исходная Go-реализация удалена после v1.0.0 (исходники остались в теге `v1.0.0`). Её наблюдаемое поведение зафиксировано в `tools/compatibility_expected.txt`, а SQLite-схема — в `tests/fixtures/go_schema_v1.sql`; Rust сверяется с обоими в CI.
 
