@@ -1,4 +1,4 @@
-use crate::{auth, config::Config, sync};
+use crate::{attachments, auth, config::Config, ledgers, sync};
 use axum::{
     body::{Body, HttpBody},
     extract::{ConnectInfo, State as ExtractState},
@@ -24,12 +24,14 @@ pub struct State {
     cfg: Config,
     db: Mutex<Connection>,
     tokens: auth::TokenManager,
+    attachments: attachments::Store,
     clients: Mutex<HashMap<String, (Instant, u64)>>,
 }
 impl State {
     pub fn new(cfg: Config, db: Mutex<Connection>) -> Self {
         Self {
             tokens: auth::TokenManager::new(&cfg.jwt_secret, cfg.access_ttl),
+            attachments: attachments::Store::new(cfg.attachments_dir.clone()),
             cfg,
             db,
             clients: Mutex::new(HashMap::new()),
@@ -62,8 +64,17 @@ pub async fn handle(
         };
         redirect(&location, &method)
     } else {
-        // Bound memory independently of Content-Length, including chunked requests.
-        let body = read_body(body).await;
+        // Bound memory independently of Content-Length, including chunked
+        // requests. Only an authorized attachment upload may exceed 2 MiB.
+        let limit = if method == Method::PUT
+            && percent_decode(&path).starts_with("/v1/attachments/")
+            && authorize(&state, &headers).is_ok()
+        {
+            attachments::MAX_BYTES + 1
+        } else {
+            2 << 20
+        };
+        let body = read_body(body, limit).await;
         let state = state.clone();
         let headers = headers.clone();
         let escaped_slash = path.to_ascii_lowercase().contains("%2f");
@@ -134,13 +145,25 @@ pub async fn handle(
             h.insert("Access-Control-Allow-Origin", value);
         }
         h.insert("Vary", HeaderValue::from_static("Origin"));
+        // v1 responses keep the recorded Go headers; contract v2 routes and
+        // real preflights (which v1 browsers also send) get the superset.
+        let extended = is_v2_route(&percent_decode(&path))
+            || headers.contains_key("access-control-request-method");
         h.insert(
             "Access-Control-Allow-Headers",
-            HeaderValue::from_static("Authorization, Content-Type"),
+            HeaderValue::from_static(if extended {
+                "Authorization, Content-Type, X-Balance-Ledger"
+            } else {
+                "Authorization, Content-Type"
+            }),
         );
         h.insert(
             "Access-Control-Allow-Methods",
-            HeaderValue::from_static("GET, POST, OPTIONS"),
+            HeaderValue::from_static(if extended {
+                "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+            } else {
+                "GET, POST, OPTIONS"
+            }),
         );
     }
     if is_head {
@@ -151,16 +174,16 @@ pub async fn handle(
 
 // Go's decoder consumes one value, so a valid first value may be followed by
 // ignored data beyond MaxBytesReader's cap. Keep the bounded prefix available.
-async fn read_body(mut body: Body) -> Result<Vec<u8>, ()> {
+async fn read_body(mut body: Body, limit: usize) -> Result<Vec<u8>, ()> {
     let mut bytes = Vec::new();
-    while bytes.len() < 2 << 20 {
+    while bytes.len() < limit {
         let frame = std::future::poll_fn(|cx| std::pin::Pin::new(&mut body).poll_frame(cx)).await;
         let Some(frame) = frame else {
             break;
         };
         let frame = frame.map_err(|_| ())?;
         if let Ok(data) = frame.into_data() {
-            let remaining = (2 << 20) - bytes.len();
+            let remaining = limit - bytes.len();
             bytes.extend_from_slice(&data[..data.len().min(remaining)]);
         }
     }
@@ -175,6 +198,9 @@ fn dispatch(
     body: Result<&[u8], &()>,
     host: &str,
 ) -> Response {
+    if let Some(response) = dispatch_v2(state, method, path, headers, body, host) {
+        return response;
+    }
     let post_route = matches!(
         path,
         "/v1/auth/register"
@@ -208,20 +234,9 @@ fn dispatch(
     if matches!(
         path,
         "/v1/auth/register" | "/v1/auth/login" | "/v1/auth/refresh"
-    ) {
-        let now = Instant::now();
-        let mut clients = state.clients.lock().unwrap_or_else(|e| e.into_inner());
-        let bucket = clients.entry(host.to_owned()).or_insert((now, 0));
-        if now.duration_since(bucket.0) >= Duration::from_secs(60) {
-            *bucket = (now, 0);
-        }
-        bucket.1 = bucket.1.saturating_add(1);
-        if bucket.1 > 30 {
-            let mut r = error(429, "rate_limited", "Too many authentication requests");
-            r.headers_mut()
-                .insert("Retry-After", HeaderValue::from_static("60"));
-            return r;
-        }
+    ) && let Some(r) = rate_limited(state, host)
+    {
+        return r;
     }
     let claims = if path == "/v1/sync" {
         match authorize(state, headers) {
@@ -238,12 +253,17 @@ fn dispatch(
         return invalid_json();
     };
     if let Some(claims) = claims {
-        return match sync::synchronize_wire(
-            &mut state.db.lock().unwrap_or_else(|e| e.into_inner()),
-            &claims.subject,
-            body,
-        ) {
-            Ok(value) => raw_json_response(200, value),
+        let mut db = state.db.lock().unwrap_or_else(|e| e.into_inner());
+        let space = match ledgers::space(&db, header(headers, LEDGER_HEADER), &claims.subject) {
+            Ok(space) => space,
+            Err((status, code, message)) => return error(status, code, message),
+        };
+        return match sync::synchronize_space(&mut db, &space, body) {
+            Ok((value, garbage)) => {
+                // Still under the database lock, so no upload can race.
+                state.attachments.remove(&space, &garbage);
+                raw_json_response(200, value)
+            }
             Err((status, code, message)) => error(status, code, &message),
         };
     }
@@ -277,6 +297,248 @@ fn dispatch(
             r
         }
         _ => error(404, "not_found", "Endpoint not found"),
+    }
+}
+
+const LEDGER_HEADER: &str = "x-balance-ledger";
+
+/// Shared limiter of endpoints that accept guessable secrets.
+fn rate_limited(state: &State, host: &str) -> Option<Response> {
+    let now = Instant::now();
+    let mut clients = state.clients.lock().unwrap_or_else(|e| e.into_inner());
+    let bucket = clients.entry(host.to_owned()).or_insert((now, 0));
+    if now.duration_since(bucket.0) >= Duration::from_secs(60) {
+        *bucket = (now, 0);
+    }
+    bucket.1 = bucket.1.saturating_add(1);
+    if bucket.1 > 30 {
+        let mut r = error(429, "rate_limited", "Too many authentication requests");
+        r.headers_mut()
+            .insert("Retry-After", HeaderValue::from_static("60"));
+        return Some(r);
+    }
+    None
+}
+
+enum Route<'a> {
+    Capabilities,
+    Ledgers,
+    Join,
+    Ledger(&'a str),
+    Invites(&'a str),
+    Member(&'a str, &'a str),
+    Attachment(&'a str),
+}
+
+fn route(path: &str) -> Option<Route<'_>> {
+    let rest = path.strip_prefix("/v1/")?;
+    let segments: Vec<&str> = rest.split('/').collect();
+    if segments.iter().any(|s| s.is_empty()) {
+        return None;
+    }
+    Some(match segments.as_slice() {
+        ["capabilities"] => Route::Capabilities,
+        ["ledgers"] => Route::Ledgers,
+        ["ledgers", "join"] => Route::Join,
+        ["ledgers", id] => Route::Ledger(id),
+        ["ledgers", id, "invites"] => Route::Invites(id),
+        ["ledgers", id, "members", user] => Route::Member(id, user),
+        ["attachments", sha] => Route::Attachment(sha),
+        _ => return None,
+    })
+}
+
+fn is_v2_route(path: &str) -> bool {
+    route(path).is_some()
+}
+
+fn method_not_allowed(allow: &'static str) -> Response {
+    let mut r = plain(405, "Method Not Allowed\n");
+    r.headers_mut()
+        .insert("Allow", HeaderValue::from_static(allow));
+    r
+}
+
+fn ledger_error((status, code, message): ledgers::LedgerError) -> Response {
+    error(status, code, message)
+}
+
+/// Contract v2 endpoints. `None` hands the request to the v1 dispatcher.
+fn dispatch_v2(
+    state: &State,
+    method: &Method,
+    path: &str,
+    headers: &HeaderMap,
+    body: Result<&[u8], &()>,
+    host: &str,
+) -> Option<Response> {
+    let route = route(path)?;
+    let get = method == Method::GET || method == Method::HEAD;
+    let allowed = match route {
+        Route::Capabilities => get,
+        Route::Ledgers => get || method == Method::POST,
+        Route::Join | Route::Invites(_) => method == Method::POST,
+        Route::Ledger(_) => method == Method::PATCH || method == Method::DELETE,
+        Route::Member(..) => method == Method::DELETE,
+        Route::Attachment(_) => get || method == Method::PUT,
+    };
+    if !allowed {
+        return Some(method_not_allowed(match route {
+            Route::Capabilities => "GET, HEAD",
+            Route::Ledgers => "GET, HEAD, POST",
+            Route::Join | Route::Invites(_) => "POST",
+            Route::Ledger(_) => "PATCH, DELETE",
+            Route::Member(..) => "DELETE",
+            Route::Attachment(_) => "GET, HEAD, PUT",
+        }));
+    }
+    if let Route::Capabilities = route {
+        return Some(json_response(200, capabilities()));
+    }
+    if let Route::Join = route
+        && let Some(r) = rate_limited(state, host)
+    {
+        return Some(r);
+    }
+    let claims = match authorize(state, headers) {
+        Ok(c) => c,
+        Err(r) => return Some(*r),
+    };
+    let user = claims.subject.as_str();
+    let Ok(body) = body else {
+        return Some(invalid_json());
+    };
+    let lock = || state.db.lock().unwrap_or_else(|e| e.into_inner());
+    Some(match route {
+        Route::Capabilities => unreachable!("answered above"),
+        Route::Ledgers if get => match ledgers::list(&lock(), user) {
+            Ok(v) => json_response(200, v),
+            Err(e) => ledger_error(e),
+        },
+        Route::Ledgers => match ledgers::parse_name(body)
+            .and_then(|name| ledgers::create(&mut lock(), user, &name))
+        {
+            Ok(v) => json_response(201, v),
+            Err(e) => ledger_error(e),
+        },
+        Route::Join => match ledgers::join(&mut lock(), user, body) {
+            Ok(v) => json_response(200, v),
+            Err(e) => ledger_error(e),
+        },
+        Route::Ledger(id) if method == Method::PATCH => {
+            let db = lock();
+            match ledgers::role(&db, id, user)
+                .and_then(|_| ledgers::parse_name(body))
+                .and_then(|name| ledgers::rename(&db, id, user, &name))
+            {
+                Ok(v) => json_response(200, v),
+                Err(e) => ledger_error(e),
+            }
+        }
+        Route::Ledger(id) => {
+            let mut db = lock();
+            match ledgers::delete(&mut db, id, user) {
+                Ok(()) => {
+                    // Still under the lock: no upload can recreate the directory.
+                    state
+                        .attachments
+                        .remove_space(&sync::Space::Ledger(id.to_owned()));
+                    empty(204)
+                }
+                Err(e) => ledger_error(e),
+            }
+        }
+        Route::Invites(id) => match ledgers::invite(&lock(), id, user) {
+            Ok(v) => json_response(201, v),
+            Err(e) => ledger_error(e),
+        },
+        Route::Member(id, target) => match ledgers::remove_member(&lock(), id, user, target) {
+            Ok(()) => empty(204),
+            Err(e) => ledger_error(e),
+        },
+        Route::Attachment(sha) => {
+            let space = match ledgers::space(&lock(), header(headers, LEDGER_HEADER), user) {
+                Ok(space) => space,
+                Err(e) => return Some(ledger_error(e)),
+            };
+            if get {
+                get_attachment(state, &space, sha)
+            } else {
+                put_attachment(state, &space, sha, header(headers, "content-type"), body)
+            }
+        }
+    })
+}
+
+fn capabilities() -> Value {
+    json!({
+        "contract": 2,
+        "entities": sync::ENTITIES,
+        "attachments": {"maxBytes": attachments::MAX_BYTES, "types": attachments::TYPES},
+        "ledgers": true
+    })
+}
+
+fn put_attachment(
+    state: &State,
+    space: &sync::Space,
+    sha: &str,
+    content_type: &str,
+    body: &[u8],
+) -> Response {
+    use attachments::PutError;
+    match attachments::put(
+        &state.db,
+        &state.attachments,
+        space,
+        sha,
+        content_type,
+        body,
+    ) {
+        Ok(created) => json_response(
+            if created { 201 } else { 200 },
+            json!({"sha256": sha, "size": body.len(), "contentType": attachments::media_type(content_type)}),
+        ),
+        Err(PutError::HashMismatch) => error(
+            400,
+            "hash_mismatch",
+            "SHA-256 of the body does not match the path",
+        ),
+        Err(PutError::UnsupportedMediaType) => error(
+            415,
+            "unsupported_media_type",
+            "Content-Type is not an accepted attachment type",
+        ),
+        Err(PutError::PayloadTooLarge) => error(
+            413,
+            "payload_too_large",
+            "Attachment exceeds the maximum size",
+        ),
+        Err(PutError::Internal) => error(500, "internal_error", "Could not store attachment"),
+    }
+}
+
+fn get_attachment(state: &State, space: &sync::Space, sha: &str) -> Response {
+    match attachments::get(&state.db, &state.attachments, space, sha) {
+        Ok(Some((bytes, media))) => {
+            let mut r = empty(200);
+            if let Ok(v) = HeaderValue::from_str(&media) {
+                r.headers_mut().insert("Content-Type", v);
+            }
+            r.headers_mut().insert(
+                "Content-Length",
+                HeaderValue::from_str(&bytes.len().to_string()).unwrap(),
+            );
+            // Never render user files inline as part of the web client origin.
+            r.headers_mut().insert(
+                "Content-Disposition",
+                HeaderValue::from_static("attachment"),
+            );
+            *r.body_mut() = Body::from(bytes);
+            r
+        }
+        Ok(None) => error(404, "not_found", "Attachment not found"),
+        Err(()) => error(500, "internal_error", "Could not read attachment"),
     }
 }
 
@@ -868,6 +1130,10 @@ mod tests {
                 refresh_ttl: chrono::TimeDelta::days(30),
                 allow_registration: true,
                 cors_origins: vec!["https://allowed.example".into()],
+                attachments_dir: std::env::temp_dir().join(format!(
+                    "balance-attachments-{}",
+                    auth::identifier().unwrap()
+                )),
             },
             Mutex::new(crate::database::open(":memory:").unwrap()),
         )
@@ -1010,3 +1276,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod v2_tests;

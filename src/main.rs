@@ -1,7 +1,9 @@
+mod attachments;
 mod auth;
 mod config;
 mod database;
 mod go_json;
+mod ledgers;
 mod runtime;
 mod server;
 mod sync;

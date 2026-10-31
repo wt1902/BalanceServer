@@ -1,5 +1,8 @@
 use chrono::TimeDelta;
-use std::env;
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -10,6 +13,7 @@ pub struct Config {
     pub refresh_ttl: TimeDelta,
     pub allow_registration: bool,
     pub cors_origins: Vec<String>,
+    pub attachments_dir: PathBuf,
 }
 
 impl Config {
@@ -25,9 +29,14 @@ impl Config {
         if jwt_secret.len() < 32 {
             return Err("BALANCE_JWT_SECRET must contain at least 32 characters".into());
         }
+        let database_path = fallback("BALANCE_DB_PATH", "./data/balance.db");
+        let attachments_dir = match value("BALANCE_ATTACHMENTS_DIR") {
+            dir if dir.is_empty() => default_attachments_dir(&database_path),
+            dir => PathBuf::from(dir),
+        };
         Ok(Self {
             address: fallback("BALANCE_ADDR", ":8080"),
-            database_path: fallback("BALANCE_DB_PATH", "./data/balance.db"),
+            database_path,
             jwt_secret,
             access_ttl,
             refresh_ttl,
@@ -38,8 +47,17 @@ impl Config {
                 .filter(|part| !part.is_empty())
                 .map(str::to_owned)
                 .collect(),
+            attachments_dir,
         })
     }
+}
+
+/// `attachments` next to the database file.
+pub fn default_attachments_dir(database_path: &str) -> PathBuf {
+    Path::new(database_path)
+        .parent()
+        .unwrap_or(Path::new(""))
+        .join("attachments")
 }
 
 fn value(key: &str) -> String {
@@ -127,6 +145,17 @@ pub fn parse_go_duration(input: &str) -> Option<TimeDelta> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn attachments_default_next_to_database() {
+        assert_eq!(
+            default_attachments_dir("/data/balance.db"),
+            Path::new("/data/attachments")
+        );
+        assert_eq!(
+            default_attachments_dir("balance.db"),
+            Path::new("attachments")
+        );
+    }
     #[test]
     fn duration_matches_go_syntax_and_range() {
         assert_eq!(parse_go_duration("1h30m"), Some(TimeDelta::minutes(90)));

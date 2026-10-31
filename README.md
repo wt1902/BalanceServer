@@ -76,6 +76,7 @@ The browser session uses `HttpOnly`, `SameSite=Strict` cookies. Native applicati
 | `BALANCE_ACCESS_TTL` | `15m` | Access-token lifetime |
 | `BALANCE_REFRESH_TTL` | `720h` | Refresh-token lifetime |
 | `BALANCE_CORS_ORIGINS` | empty | Comma-separated browser origins; native apps do not need CORS |
+| `BALANCE_ATTACHMENTS_DIR` | `attachments` next to `BALANCE_DB_PATH` | Directory for attachment files (receipt photos); Docker: `/data/attachments` |
 
 ## HTTPS
 
@@ -99,15 +100,24 @@ Then enter `https://balance.example.com` in each application's Settings → Serv
 | `POST` | `/v1/auth/refresh` | Rotate session tokens |
 | `POST` | `/v1/auth/logout` | Revoke refresh token |
 | `GET` | `/v1/me` | Current account |
-| `POST` | `/v1/sync` | Push and pull changes |
+| `POST` | `/v1/sync` | Push and pull changes (`X-Balance-Ledger` selects a shared ledger) |
+| `GET` | `/v1/capabilities` | Contract version and features (no authorization) |
+| `GET`, `POST` | `/v1/ledgers` | List / create shared ledgers |
+| `PATCH`, `DELETE` | `/v1/ledgers/{id}` | Rename / delete a ledger (owner) |
+| `POST` | `/v1/ledgers/{id}/invites` | One-time invite code (owner) |
+| `POST` | `/v1/ledgers/join` | Join a ledger by code |
+| `DELETE` | `/v1/ledgers/{id}/members/{userId}` | Remove a member or leave |
+| `PUT`, `GET` | `/v1/attachments/{sha256}` | Upload / download attachment bytes |
 
-The sync endpoint accepts transactions, custom categories and monthly budgets. The server isolates records by account, stores an append-only change cursor, and resolves competing edits with last-write-wins timestamps. Current Apple and Android clients use push-only requests followed by paginated pulls; update the server and applications together.
+The server implements ecosystem contract v2 ([docs/CONTRACT_V2.md](docs/CONTRACT_V2.md)).
+The sync endpoint accepts transactions, categories, budgets, accounts, transfers,
+recurring operations, goals, debts, exchange rates, settings and attachment metadata. The server isolates records by account, stores an append-only change cursor, and resolves competing edits with last-write-wins timestamps. Current Apple and Android clients use push-only requests followed by paginated pulls; update the server and applications together.
 
 ## Operational notes
 
 - Registration can be disabled after the required accounts have been created.
 - Passwords are stored as salted Argon2id hashes. Refresh tokens are stored only as SHA-256 hashes.
-- Back up the SQLite database and its `-wal`/`-shm` files together, or stop the server before copying the database.
+- Back up the SQLite database and its `-wal`/`-shm` files together with the attachments directory, or stop the server before copying them.
 - Changing `BALANCE_JWT_SECRET` invalidates access tokens. Existing refresh sessions remain valid and will receive new access tokens after refresh.
 - The in-process authentication limiter allows 30 authentication requests per IP per minute. Use a reverse proxy for stronger public rate limiting and request logging.
 

@@ -14,7 +14,8 @@
 Go — в `tests/fixtures/go_schema_v1.sql`. Оба файла не правь вручную.
 
 Основные Rust-модули: `src/main.rs`, `runtime.rs`, `config.rs`,
-`database.rs`, `auth.rs`, `server.rs`, `sync.rs`, `go_json.rs`.
+`database.rs`, `auth.rs`, `server.rs`, `sync.rs`, `go_json.rs`,
+`ledgers.rs`, `attachments.rs` (контракт v2, `docs/CONTRACT_V2.md`).
 Веб-клиент из `web/` встроен в Rust executable.
 
 Обнаруженные технологии/интеграции: SQLite, Docker.

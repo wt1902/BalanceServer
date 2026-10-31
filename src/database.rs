@@ -1,7 +1,8 @@
 use rusqlite::Connection;
 use std::{error::Error, path::Path, time::Duration};
 
-/// Open the existing Go server's SQLite database without changing its schema.
+/// Open the SQLite database. Tables of the Go server's v1 schema are never
+/// altered; contract v2 only adds new tables (ledgers, attachments).
 pub fn open(path: &str) -> Result<Connection, Box<dyn Error + Send + Sync>> {
     if let Some(parent) = Path::new(path)
         .parent()
@@ -63,7 +64,61 @@ CREATE TABLE IF NOT EXISTS changes (
   deleted INTEGER NOT NULL,
   version INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS changes_user_sequence_idx ON changes(user_id, sequence);",
+CREATE INDEX IF NOT EXISTS changes_user_sequence_idx ON changes(user_id, sequence);
+CREATE TABLE IF NOT EXISTS ledgers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ledger_members (
+  ledger_id TEXT NOT NULL REFERENCES ledgers(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('owner','member')),
+  joined_at TEXT NOT NULL,
+  PRIMARY KEY (ledger_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS ledger_members_user_idx ON ledger_members(user_id);
+CREATE TABLE IF NOT EXISTS ledger_invites (
+  code_hash TEXT PRIMARY KEY,
+  ledger_id TEXT NOT NULL REFERENCES ledgers(id) ON DELETE CASCADE,
+  created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  used_at TEXT,
+  used_by TEXT REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS ledger_invites_ledger_idx ON ledger_invites(ledger_id);
+CREATE TABLE IF NOT EXISTS ledger_records (
+  ledger_id TEXT NOT NULL REFERENCES ledgers(id) ON DELETE CASCADE,
+  entity TEXT NOT NULL,
+  record_id TEXT NOT NULL,
+  payload TEXT,
+  updated_at TEXT NOT NULL,
+  deleted INTEGER NOT NULL DEFAULT 0,
+  version INTEGER NOT NULL,
+  PRIMARY KEY (ledger_id, entity, record_id)
+);
+CREATE TABLE IF NOT EXISTS ledger_changes (
+  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+  ledger_id TEXT NOT NULL REFERENCES ledgers(id) ON DELETE CASCADE,
+  entity TEXT NOT NULL,
+  record_id TEXT NOT NULL,
+  payload TEXT,
+  updated_at TEXT NOT NULL,
+  deleted INTEGER NOT NULL,
+  version INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ledger_changes_ledger_sequence_idx ON ledger_changes(ledger_id, sequence);
+CREATE TABLE IF NOT EXISTS attachment_blobs (
+  space TEXT NOT NULL,
+  sha256 TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  uploaded_at TEXT NOT NULL,
+  referenced INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (space, sha256)
+);",
     )
 }
 
@@ -155,6 +210,26 @@ mod tests {
                     .unwrap(),
                 "{\"amount\":12.5}"
             );
+            // Contract v2 tables are added next to the untouched v1 tables.
+            for table in [
+                "ledgers",
+                "ledger_members",
+                "ledger_invites",
+                "ledger_records",
+                "ledger_changes",
+                "attachment_blobs",
+            ] {
+                assert_eq!(
+                    db.query_row(
+                        "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?",
+                        [table],
+                        |r| r.get::<_, i64>(0)
+                    )
+                    .unwrap(),
+                    1,
+                    "{table}"
+                );
+            }
             db.execute("INSERT INTO changes(user_id,entity,record_id,payload,updated_at,deleted,version) VALUES ('go-user','transaction','next',NULL,'now',1,42)", []).unwrap();
             assert_eq!(db.last_insert_rowid(), 42);
             assert_eq!(

@@ -259,11 +259,68 @@ fn failure(status: u16, code: &'static str, message: &str) -> SyncError {
     (status, code, message.to_owned())
 }
 
+/// Entities accepted by `/v1/sync` (contract v2, section 1).
+pub const ENTITIES: [&str; 11] = [
+    "transaction",
+    "category",
+    "budget",
+    "account",
+    "transfer",
+    "recurring",
+    "goal",
+    "debt",
+    "rate",
+    "setting",
+    "attachment",
+];
+
+/// A data space: the user's personal records (v1 tables) or a shared ledger.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Space {
+    User(String),
+    Ledger(String),
+}
+
+impl Space {
+    /// Records table, changes table and the column that selects the space.
+    pub fn tables(&self) -> (&'static str, &'static str, &'static str) {
+        match self {
+            Space::User(_) => ("records", "changes", "user_id"),
+            Space::Ledger(_) => ("ledger_records", "ledger_changes", "ledger_id"),
+        }
+    }
+    pub fn id(&self) -> &str {
+        match self {
+            Space::User(id) | Space::Ledger(id) => id,
+        }
+    }
+    /// Stable key of the space in `attachment_blobs`.
+    pub fn key(&self) -> String {
+        match self {
+            Space::User(id) => format!("user:{id}"),
+            Space::Ledger(id) => format!("ledger:{id}"),
+        }
+    }
+}
+
+/// Synchronize the personal space of `user_id`.
+#[cfg(test)]
 pub fn synchronize_wire(
     db: &mut Connection,
     user_id: &str,
     body: &[u8],
 ) -> Result<Vec<u8>, SyncError> {
+    synchronize_space(db, &Space::User(user_id.to_owned()), body).map(|(response, _)| response)
+}
+
+/// Apply a sync request in `space`. Besides the response body, it returns the
+/// attachment blobs that became garbage; their rows are already deleted in
+/// the committed transaction and the caller removes the files.
+pub fn synchronize_space(
+    db: &mut Connection,
+    space: &Space,
+    body: &[u8],
+) -> Result<(Vec<u8>, Vec<String>), SyncError> {
     let invalid_json = || failure(400, "invalid_json", "Request body is not valid JSON");
     let body = &body[..body.len().min(2 << 20)];
     // The original decoder reads the first JSON value, without requiring EOF.
@@ -287,7 +344,9 @@ pub fn synchronize_wire(
         ));
     }
     for c in &request.changes {
-        let message = if !matches!(c.entity.as_str(), "transaction" | "category" | "budget") {
+        let message = if !ENTITIES.contains(&c.entity.as_str()) {
+            // The message is part of the recorded v1 reference responses
+            // (tools/compatibility_expected.txt), so it is kept unchanged.
             Some("entity must be transaction, category, or budget")
         } else if c.id.is_empty() || c.id.len() > 128 {
             Some("record id is invalid")
@@ -313,12 +372,18 @@ pub fn synchronize_wire(
     let tx = db
         .transaction()
         .map_err(|_| failure(500, "sync_failed", "Could not begin synchronization"))?;
+    let touches_attachments = request.changes.iter().any(|c| c.entity == "attachment");
     for c in request.changes {
-        apply(&tx, user_id, c)
-            .map_err(|_| failure(500, "sync_failed", "Could not apply changes"))?;
+        apply(&tx, space, c).map_err(|_| failure(500, "sync_failed", "Could not apply changes"))?;
     }
+    let garbage = if touches_attachments {
+        crate::attachments::collect_garbage(&tx, space, Utc::now())
+            .map_err(|_| failure(500, "sync_failed", "Could not apply changes"))?
+    } else {
+        Vec::new()
+    };
     let (changes, cursor, more) = if request.pull.unwrap_or(true) {
-        load(&tx, user_id, request.cursor)
+        load(&tx, space, request.cursor)
             .map_err(|_| failure(500, "sync_failed", "Could not load changes"))?
     } else {
         (Vec::new(), request.cursor, false)
@@ -339,7 +404,7 @@ pub fn synchronize_wire(
         )
         .as_bytes(),
     );
-    Ok(response)
+    Ok((response, garbage))
 }
 
 #[cfg(test)]
@@ -351,10 +416,12 @@ fn synchronize(db: &mut Connection, user_id: &str, body: &[u8]) -> Result<Value,
 
 type InternalError = Box<dyn std::error::Error + Send + Sync>;
 
-fn apply(tx: &Transaction<'_>, user: &str, c: Change) -> Result<(), InternalError> {
+fn apply(tx: &Transaction<'_>, space: &Space, c: Change) -> Result<(), InternalError> {
+    let (records, changes, key) = space.tables();
+    let user = space.id();
     let current: Option<(String, i64)> = tx
         .query_row(
-            "SELECT updated_at,version FROM records WHERE user_id=? AND entity=? AND record_id=?",
+            &format!("SELECT updated_at,version FROM {records} WHERE {key}=? AND entity=? AND record_id=?"),
             params![user, c.entity, c.id],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
@@ -373,17 +440,19 @@ fn apply(tx: &Transaction<'_>, user: &str, c: Change) -> Result<(), InternalErro
         c.payload.as_deref()
     };
     let time = timestamp(updated);
-    tx.execute("INSERT INTO records(user_id,entity,record_id,payload,updated_at,deleted,version) VALUES(?,?,?,CAST(? AS TEXT),?,?,?) ON CONFLICT(user_id,entity,record_id) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at,deleted=excluded.deleted,version=excluded.version", params![user,c.entity,c.id,payload,time,c.deleted,version])?;
-    tx.execute("INSERT INTO changes(user_id,entity,record_id,payload,updated_at,deleted,version) VALUES(?,?,?,CAST(? AS TEXT),?,?,?)", params![user,c.entity,c.id,payload,time,c.deleted,version])?;
+    tx.execute(&format!("INSERT INTO {records}({key},entity,record_id,payload,updated_at,deleted,version) VALUES(?,?,?,CAST(? AS TEXT),?,?,?) ON CONFLICT({key},entity,record_id) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at,deleted=excluded.deleted,version=excluded.version"), params![user,c.entity,c.id,payload,time,c.deleted,version])?;
+    tx.execute(&format!("INSERT INTO {changes}({key},entity,record_id,payload,updated_at,deleted,version) VALUES(?,?,?,CAST(? AS TEXT),?,?,?)"), params![user,c.entity,c.id,payload,time,c.deleted,version])?;
     Ok(())
 }
 
 fn load(
     tx: &Transaction<'_>,
-    user: &str,
+    space: &Space,
     after: i64,
 ) -> Result<(Vec<Vec<u8>>, i64, bool), InternalError> {
-    let mut stmt = tx.prepare("SELECT sequence,entity,record_id,payload,updated_at,deleted,version FROM changes WHERE user_id=? AND sequence>? ORDER BY sequence ASC LIMIT ?")?;
+    let (_, changes, key) = space.tables();
+    let user = space.id();
+    let mut stmt = tx.prepare(&format!("SELECT sequence,entity,record_id,payload,updated_at,deleted,version FROM {changes} WHERE {key}=? AND sequence>? ORDER BY sequence ASC LIMIT ?"))?;
     let mut rows = stmt.query(params![user, after, 501])?;
     let mut result = Vec::new();
     let mut cursor = after;

@@ -35,6 +35,7 @@ for remote access; pass `X-Forwarded-Proto: https` to enable Secure session cook
 | `BALANCE_REFRESH_TTL` | `720h` | Go-style duration for refresh tokens |
 | `BALANCE_ALLOW_REGISTRATION` | `true` | Enable creation of accounts |
 | `BALANCE_CORS_ORIGINS` | empty | Comma-separated allowed browser origins |
+| `BALANCE_ATTACHMENTS_DIR` | `attachments` beside the database | Attachment files; Docker uses `/data/attachments` inside the same volume. Back it up with the database |
 
 Inject secrets through the deployment environment or `.env`; never put them in
 images or source control. Compose preserves the existing named `balance-data`
